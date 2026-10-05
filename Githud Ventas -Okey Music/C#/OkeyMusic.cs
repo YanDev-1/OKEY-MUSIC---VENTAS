@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Globalization;
 
 class Program
 {
@@ -27,16 +29,6 @@ class Program
     }
 
     // REGISTRO DE HISTORIALES
-    class RegistroVenta
-    {
-        public int NumeroVenta { get; set; }
-        public DateTime FechaHora { get; set; }
-        public string Codigo { get; set; }
-        public string Nombre { get; set; }
-        public int Cantidad { get; set; }
-        public double Subtotal { get; set; }
-    }
-    //Registro de historial de stock
     class RegistroStock
     {
         public DateTime FechaHora { get; set; }
@@ -45,23 +37,51 @@ class Program
         public int CantidadIngresada { get; set; }
     }
 
+    // NUEVA ESTRUCTURA DE GASTO
+    class Gasto
+    {
+        public string Empleado { get; set; }
+        public double Monto { get; set; }
+        public string Descripcion { get; set; }
+        public string Proposito { get; set; }
+        public DateTime FechaHora { get; set; }
+    }
+
     // LISTAS PRINCIPALES
     static List<Producto> productos = new List<Producto>();
-    static List<RegistroVenta> historialVentas = new List<RegistroVenta>();
+
+    // ARREGLOS PARALELOS DE VENTAS
+    const int MAX_REGISTROS_VENTA = 1000;
+    static string[] codigosVenta = new string[MAX_REGISTROS_VENTA];
+    static DateTime[] fechasVenta = new DateTime[MAX_REGISTROS_VENTA];
+    static string[] codigosProductoVenta = new string[MAX_REGISTROS_VENTA];
+    static string[] nombresProductoVenta = new string[MAX_REGISTROS_VENTA];
+    static int[] cantidadesVenta = new int[MAX_REGISTROS_VENTA];
+    static double[] subtotalesVenta = new double[MAX_REGISTROS_VENTA];
+    static double[] descuentosVenta = new double[MAX_REGISTROS_VENTA];
+    static int totalRegistrosVenta = 0;
+
     static List<RegistroStock> historialStock = new List<RegistroStock>();
+    static List<Gasto> listaGastos = new List<Gasto>(); // Nueva lista para Gastos
     static int contadorVentas = 0;
+
+    static readonly string archivoProductos = "productos.txt";
+    static readonly string archivoVentas = "ventas.txt";
+    static readonly string archivoStock = "historial_stock.txt";
+    static readonly string archivoGastos = "gastos.txt"; // Nuevo archivo para Gastos
 
     static void Main(string[] args)
     {
         CargarProductosIniciales();
+        CargarDatosGuardados();
         int opcion;
 
         do
         {
             MostrarMenu();
-            while (!int.TryParse(Console.ReadLine(), out opcion))
+            while (!int.TryParse(Console.ReadLine(), out opcion) || opcion < 1 || opcion > 14)
             {
-                Console.WriteLine("Error: Ingrese un número válido (1-11)");
+                Console.WriteLine("Error: Ingrese un número válido (1-14)");
                 Console.Write("Ingrese opción: ");
             }
 
@@ -70,29 +90,35 @@ class Program
                 case 1: RegistrarStock(); break;
                 case 2: MostrarProductosPorCategoria(); break;
                 case 3: VenderProductos(); break;
-                case 4: BuscarProductoExacto(); break;
-                case 5: BuscarProductoParcial(); break;
-                case 6: ModificarProducto(); break;
-                case 7: EliminarProductos(); break;
-                case 8: OrdenarProductos(); break;
-                case 9: MostrarGanancias(); break;
-                case 10: MostrarHistorialStock(); break;
-                case 11:
+                case 4: BuscarVentaPorCodigo(); break;
+                case 5: BuscarProductoExacto(); break;
+                case 6: BuscarProductoParcial(); break;
+                case 7: ModificarProducto(); break;
+                case 8: EliminarProductos(); break;
+                case 9: OrdenarProductos(); break;
+                case 10: MostrarGanancias(); break;
+                case 11: MostrarHistorialStock(); break;
+                case 12: RegistrarGasto(); break;
+                case 13: ResumenDelDia(); break;
+                case 14:
                     Console.WriteLine("Saliendo del sistema...");
                     break;
                 default:
-                    Console.WriteLine("Opción no válida. Elija un número del 1 al 11.");
+                    Console.WriteLine("Opción no válida. Elija un número del 1 al 14.");
                     break;
             }
 
-            if (opcion != 11)
+            if (opcion != 14)
             {
-                Console.WriteLine("\nPresione cualquier tecla para continuar...");
-                Console.ReadKey();
-                Console.Clear();
+                if (!Console.IsInputRedirected)
+                {
+                    Console.WriteLine("\nPresione cualquier tecla para continuar...");
+                    try { Console.ReadKey(true); } catch { Console.ReadLine(); }
+                    Console.Clear();
+                }
             }
 
-        } while (opcion != 11);
+        } while (opcion != 14);
     }
 
     static void MostrarMenu()
@@ -102,14 +128,17 @@ class Program
         Console.WriteLine("1. Registrar stock");
         Console.WriteLine("2. Mostrar productos (por categoría)");
         Console.WriteLine("3. Vender productos");
-        Console.WriteLine("4. Buscar producto (exacto)");
-        Console.WriteLine("5. Buscar producto (parcial)");
-        Console.WriteLine("6. Modificar producto (Nombre y Precio)");
-        Console.WriteLine("7. Eliminar producto(s)");
-        Console.WriteLine("8. Ordenar productos");
-        Console.WriteLine("9. Ver ganancias (Historial de ventas con fecha y hora)");
-        Console.WriteLine("10. Ver historial de ingreso de stock");
-        Console.WriteLine("11. Salir");
+        Console.WriteLine("4. Buscar venta por código");
+        Console.WriteLine("5. Buscar producto (exacto)");
+        Console.WriteLine("6. Buscar producto (parcial)");
+        Console.WriteLine("7. Modificar producto (Nombre y Precio)");
+        Console.WriteLine("8. Eliminar producto(s)");
+        Console.WriteLine("9. Ordenar productos");
+        Console.WriteLine("10. Ver ganancias (Historial de ventas con fecha y hora)");
+        Console.WriteLine("11. Ver historial de ingreso de stock");
+        Console.WriteLine("12. Registrar gasto");
+        Console.WriteLine("13. Resumen del día (Ventas y Gastos)");
+        Console.WriteLine("14. Salir");
         Console.WriteLine("=====================================================================");
         Console.Write("Elija una opción: ");
     }
@@ -137,6 +166,7 @@ class Program
         }
 
         prod.Stock += cantidad;
+        GuardarProductos();
 
         historialStock.Add(new RegistroStock
         {
@@ -145,6 +175,7 @@ class Program
             Nombre = prod.Nombre,
             CantidadIngresada = cantidad
         });
+        GuardarHistorialStock();
 
         Console.WriteLine($"¡Stock actualizado con éxito! Nuevo stock de {prod.Nombre}: {prod.Stock} unidades.");
     }
@@ -199,15 +230,19 @@ class Program
     {
         Console.WriteLine("\n--- REALIZAR VENTA ---");
         Console.Write("¿Cuántos tipos de productos diferentes desea vender en esta transacción?: ");
+
         int totalItems;
         while (!int.TryParse(Console.ReadLine(), out totalItems) || totalItems <= 0)
         {
             Console.Write("Ingrese un número válido mayor a 0: ");
         }
 
-        contadorVentas++;
-        double totalVenta = 0;
-        bool algunaVentaExitosa = false;
+        List<string> codigosTemp = new List<string>();
+        List<DateTime> fechasTemp = new List<DateTime>();
+        List<string> nombresTemp = new List<string>();
+        List<int> cantidadesTemp = new List<int>();
+        List<double> subtotalesTemp = new List<double>();
+        List<double> descuentosTemp = new List<double>();
 
         for (int i = 0; i < totalItems; i++)
         {
@@ -224,6 +259,7 @@ class Program
 
             Console.WriteLine($"Producto: {prod.Nombre} | Precio: S/.{prod.Precio:0.00} | Stock: {prod.Stock}");
             Console.Write("Ingrese cantidad a vender: ");
+
             int cantidad;
             while (!int.TryParse(Console.ReadLine(), out cantidad) || cantidad <= 0)
             {
@@ -232,22 +268,38 @@ class Program
 
             if (prod.Stock >= cantidad)
             {
-                prod.Stock -= cantidad;
-                double subtotal = prod.Precio * cantidad;
-                totalVenta += subtotal;
-                algunaVentaExitosa = true;
+                Console.Write($"Ingrese el precio final por unidad (Enter = S/.{prod.Precio:0.00}, sin descuento): ");
+                string entradaPrecioFinal = Console.ReadLine().Trim();
 
-                historialVentas.Add(new RegistroVenta
+                double precioFinalUnitario = prod.Precio;
+
+                if (!string.IsNullOrWhiteSpace(entradaPrecioFinal))
                 {
-                    NumeroVenta = contadorVentas,
-                    FechaHora = DateTime.Now,
-                    Codigo = prod.Codigo,
-                    Nombre = prod.Nombre,
-                    Cantidad = cantidad,
-                    Subtotal = subtotal
-                });
+                    while (!double.TryParse(entradaPrecioFinal, out precioFinalUnitario) ||
+                           precioFinalUnitario <= 0 || precioFinalUnitario > prod.Precio)
+                    {
+                        Console.Write($"Precio no válido. Debe ser mayor a 0 y no superar S/.{prod.Precio:0.00}: ");
+                        entradaPrecioFinal = Console.ReadLine().Trim();
+                    }
+                }
 
-                Console.WriteLine($"Agregado: {cantidad}x {prod.Nombre} - Subtotal: S/.{subtotal:0.00}");
+                double subtotal = prod.Precio * cantidad;
+                double descuento = (prod.Precio - precioFinalUnitario) * cantidad;
+                double totalLinea = precioFinalUnitario * cantidad;
+
+                prod.Stock -= cantidad;
+
+                codigosTemp.Add(prod.Codigo);
+                fechasTemp.Add(DateTime.Now);
+                nombresTemp.Add(prod.Nombre);
+                cantidadesTemp.Add(cantidad);
+                subtotalesTemp.Add(subtotal);
+                descuentosTemp.Add(descuento);
+
+                Console.WriteLine($"Agregado: {cantidad}x {prod.Nombre}");
+                Console.WriteLine($"Precio original: S/.{prod.Precio:0.00} por unidad");
+                Console.WriteLine($"Descuento: S/.{descuento:0.00}");
+                Console.WriteLine($"Total del producto: S/.{totalLinea:0.00}");
             }
             else
             {
@@ -255,18 +307,119 @@ class Program
             }
         }
 
-        if (algunaVentaExitosa)
-        {
-            Console.WriteLine($"\n=== VENTA #{contadorVentas} COMPLETADA ===");
-            Console.WriteLine($"Total a pagar: S/.{totalVenta:0.00}");
-        }
-        else
+        if (codigosTemp.Count == 0)
         {
             Console.WriteLine("\nNo se concretó la venta de ningún producto.");
+            return;
         }
+
+        if (totalRegistrosVenta + codigosTemp.Count > MAX_REGISTROS_VENTA)
+        {
+            for (int i = 0; i < codigosTemp.Count; i++)
+            {
+                Producto producto = productos.Find(p => p.Codigo == codigosTemp[i]);
+                if (producto != null)
+                {
+                    producto.Stock += cantidadesTemp[i];
+                }
+            }
+
+            Console.WriteLine("No hay espacio disponible para registrar esta venta.");
+            return;
+        }
+
+        contadorVentas++;
+        string codigoVenta = $"VTA-{contadorVentas:0000}";
+
+        for (int i = 0; i < codigosTemp.Count; i++)
+        {
+            codigosVenta[totalRegistrosVenta] = codigoVenta;
+            fechasVenta[totalRegistrosVenta] = fechasTemp[i];
+            codigosProductoVenta[totalRegistrosVenta] = codigosTemp[i];
+            nombresProductoVenta[totalRegistrosVenta] = nombresTemp[i];
+            cantidadesVenta[totalRegistrosVenta] = cantidadesTemp[i];
+            subtotalesVenta[totalRegistrosVenta] = subtotalesTemp[i];
+            descuentosVenta[totalRegistrosVenta] = descuentosTemp[i];
+            totalRegistrosVenta++;
+        }
+
+        GuardarProductos();
+        GuardarVentas();
+
+        double subtotalGeneral = 0;
+        double descuentoGeneral = 0;
+
+        for (int i = 0; i < subtotalesTemp.Count; i++)
+        {
+            subtotalGeneral += subtotalesTemp[i];
+            descuentoGeneral += descuentosTemp[i];
+        }
+
+        double totalVenta = subtotalGeneral - descuentoGeneral;
+
+        Console.WriteLine($"\n=== VENTA {codigoVenta} COMPLETADA ===");
+        Console.WriteLine($"Subtotal: S/.{subtotalGeneral:0.00}");
+        Console.WriteLine($"Descuento total: -S/.{descuentoGeneral:0.00}");
+        Console.WriteLine($"Total a pagar: S/.{totalVenta:0.00}");
     }
 
-    // 4. BUSCAR PRODUCTO EXACTO
+    // 4. BUSCAR VENTA POR CÓDIGO
+    static void BuscarVentaPorCodigo()
+    {
+        Console.WriteLine("\n--- CONSULTA DE VENTA ---");
+        Console.Write("Ingrese el código de venta (ejemplo VTA-0001): ");
+        string codigoBuscado = Console.ReadLine().Trim().ToUpper();
+
+        bool encontrada = false;
+        double subtotalGeneral = 0;
+        double descuentoGeneral = 0;
+
+        for (int i = 0; i < totalRegistrosVenta; i++)
+        {
+            if (codigosVenta[i] == codigoBuscado)
+            {
+                if (!encontrada)
+                {
+                    encontrada = true;
+
+                    Console.WriteLine($"\nCódigo de venta: {codigosVenta[i]}");
+                    Console.WriteLine($"Fecha: {fechasVenta[i]:yyyy-MM-dd}");
+                    Console.WriteLine($"Hora: {fechasVenta[i]:HH:mm:ss}");
+                    Console.WriteLine("-----------------------------------------------");
+                }
+
+                double precioOriginalUnitario = subtotalesVenta[i] / cantidadesVenta[i];
+                double descuentoUnitario = descuentosVenta[i] / cantidadesVenta[i];
+                double precioFinalUnitario = precioOriginalUnitario - descuentoUnitario;
+                double totalLinea = subtotalesVenta[i] - descuentosVenta[i];
+
+                Console.WriteLine($"[{codigosProductoVenta[i]}] {nombresProductoVenta[i]}");
+                Console.WriteLine($"  Cantidad: {cantidadesVenta[i]}");
+                Console.WriteLine($"  Precio original: S/.{precioOriginalUnitario:0.00}");
+                Console.WriteLine($"  Precio final acordado: S/.{precioFinalUnitario:0.00}");
+                Console.WriteLine($"  Descuento: S/.{descuentoUnitario:0.00} por unidad | S/.{descuentosVenta[i]:0.00} total");
+                Console.WriteLine($"  Total del producto: S/.{totalLinea:0.00}");
+
+                subtotalGeneral += subtotalesVenta[i];
+                descuentoGeneral += descuentosVenta[i];
+            }
+        }
+
+        if (!encontrada)
+        {
+            Console.WriteLine("No se encontró ninguna venta con ese código.");
+            return;
+        }
+
+        double total = subtotalGeneral - descuentoGeneral;
+
+        Console.WriteLine("-----------------------------------------------");
+        Console.WriteLine($"Subtotal: S/.{subtotalGeneral:0.00}");
+        Console.WriteLine($"Descuento total: -S/.{descuentoGeneral:0.00}");
+        Console.WriteLine($"Total: S/.{total:0.00}");
+    }
+
+    // 5. BUSCAR PRODUCTO EXACTO
     static void BuscarProductoExacto()
     {
         Console.WriteLine("\n--- BÚSQUEDA EXACTA ---");
@@ -290,7 +443,7 @@ class Program
         }
     }
 
-    // 5. BUSCAR PRODUCTO PARCIAL
+    // 6. BUSCAR PRODUCTO PARCIAL
     static void BuscarProductoParcial()
     {
         Console.WriteLine("\n--- BÚSQUEDA PARCIAL ---");
@@ -313,7 +466,7 @@ class Program
         }
     }
 
-    // 6. MODIFICAR PRODUCTO
+    // 7. MODIFICAR PRODUCTO
     static void ModificarProducto()
     {
         Console.WriteLine("\n--- MODIFICAR PRODUCTO ---");
@@ -343,10 +496,11 @@ class Program
             prod.Precio = nuevoPrecio;
         }
 
+        GuardarProductos();
         Console.WriteLine("¡Producto modificado con éxito!");
     }
 
-    // 7. ELIMINAR PRODUCTOS
+    // 8. ELIMINAR PRODUCTOS
     static void EliminarProductos()
     {
         Console.WriteLine("\n--- ELIMINAR PRODUCTOS ---");
@@ -375,6 +529,7 @@ class Program
             if (confirm == "s" || confirm == "si")
             {
                 productos.Remove(prod);
+                GuardarProductos();
                 Console.WriteLine("Producto eliminado.");
             }
             else
@@ -384,7 +539,7 @@ class Program
         }
     }
 
-    // 8. ORDENAR PRODUCTOS
+    // 9. ORDENAR PRODUCTOS
     static void OrdenarProductos()
     {
         Console.WriteLine("\n--- CRITERIOS DE ORDENAMIENTO ---");
@@ -422,38 +577,49 @@ class Program
         Console.WriteLine("Verifique los cambios ingresando a la opción 2 (Mostrar productos).");
     }
 
-    // 9. VER GANANCIAS / VENTAS CON FECHA Y HORA
+    // 10. VER GANANCIAS / VENTAS CON FECHA Y HORA
     static void MostrarGanancias()
     {
         Console.WriteLine("\n================ HISTORIAL DE VENTAS Y GANANCIAS ================");
-        if (historialVentas.Count == 0)
+
+        if (totalRegistrosVenta == 0)
         {
             Console.WriteLine("Aún no se han registrado ventas.");
             return;
         }
 
-        int ventaActual = -1;
+        string ventaActual = "";
         double totalGeneral = 0;
+        double descuentosGenerales = 0;
 
-        foreach (var reg in historialVentas)
+        for (int i = 0; i < totalRegistrosVenta; i++)
         {
-            if (reg.NumeroVenta != ventaActual)
+            if (codigosVenta[i] != ventaActual)
             {
-                ventaActual = reg.NumeroVenta;
-                Console.WriteLine($"\n# Venta {reg.NumeroVenta} | Fecha: {reg.FechaHora:yyyy-MM-dd} | Hora: {reg.FechaHora:HH:mm:ss}");
+                ventaActual = codigosVenta[i];
+
+                Console.WriteLine($"\nCódigo: {codigosVenta[i]} | Fecha: {fechasVenta[i]:yyyy-MM-dd} | Hora: {fechasVenta[i]:HH:mm:ss}");
                 Console.WriteLine(new string('-', 65));
             }
 
-            Console.WriteLine($"  - [{reg.Codigo}] {reg.Nombre} (x{reg.Cantidad}) -> S/.{reg.Subtotal:0.00}");
-            totalGeneral += reg.Subtotal;
+            double totalLinea = subtotalesVenta[i] - descuentosVenta[i];
+
+            Console.WriteLine($"  - [{codigosProductoVenta[i]}] {nombresProductoVenta[i]} (x{cantidadesVenta[i]})");
+            Console.WriteLine($"    Precio original: S/.{subtotalesVenta[i]:0.00}");
+            Console.WriteLine($"    Descuento: -S/.{descuentosVenta[i]:0.00}");
+            Console.WriteLine($"    Total: S/.{totalLinea:0.00}");
+
+            descuentosGenerales += descuentosVenta[i];
+            totalGeneral += totalLinea;
         }
 
         Console.WriteLine("\n================================================================");
-        Console.WriteLine($"GANANCIA TOTAL ACUMULADA: S/.{totalGeneral:0.00}");
+        Console.WriteLine($"DESCUENTOS TOTALES: S/.{descuentosGenerales:0.00}");
+        Console.WriteLine($"TOTAL ACUMULADO COBRADO: S/.{totalGeneral:0.00}");
         Console.WriteLine("================================================================");
     }
 
-    // 10. HISTORIAL DE INGRESO DE STOCK CON FECHA Y HORA
+    // 11. HISTORIAL DE INGRESO DE STOCK CON FECHA Y HORA
     static void MostrarHistorialStock()
     {
         Console.WriteLine("\n================ HISTORIAL DE INGRESO DE STOCK ================");
@@ -475,6 +641,304 @@ class Program
                 reg.Codigo,
                 reg.Nombre.Length > 38 ? reg.Nombre.Substring(0, 35) + "..." : reg.Nombre,
                 reg.CantidadIngresada));
+        }
+    }
+
+    // 12. REGISTRAR GASTO
+    static void RegistrarGasto()
+    {
+        Console.WriteLine("\n--- REGISTRAR GASTO ---");
+
+        string empleado;
+        do
+        {
+            Console.Write("Empleado que realiza el gasto: ");
+            empleado = Console.ReadLine().Trim();
+            if (string.IsNullOrWhiteSpace(empleado))
+            {
+                Console.WriteLine("Error: El empleado no puede quedar vacío.");
+            }
+        } while (string.IsNullOrWhiteSpace(empleado));
+
+        double monto;
+        Console.Write("Monto del gasto: S/ ");
+        while (!double.TryParse(Console.ReadLine(), out monto) || monto <= 0)
+        {
+            Console.Write("Monto inválido. Ingrese un valor numérico mayor a 0: S/ ");
+        }
+
+        string descripcion;
+        do
+        {
+            Console.Write("Descripción de la compra o pago: ");
+            descripcion = Console.ReadLine().Trim();
+            if (string.IsNullOrWhiteSpace(descripcion))
+            {
+                Console.WriteLine("Error: La descripción no puede quedar vacía.");
+            }
+        } while (string.IsNullOrWhiteSpace(descripcion));
+
+        string proposito;
+        do
+        {
+            Console.Write("Propósito o motivo del gasto: ");
+            proposito = Console.ReadLine().Trim();
+            if (string.IsNullOrWhiteSpace(proposito))
+            {
+                Console.WriteLine("Error: El propósito no puede quedar vacío.");
+            }
+        } while (string.IsNullOrWhiteSpace(proposito));
+
+        Gasto nuevoGasto = new Gasto
+        {
+            Empleado = empleado,
+            Monto = monto,
+            Descripcion = descripcion,
+            Proposito = proposito,
+            FechaHora = DateTime.Now
+        };
+
+        listaGastos.Add(nuevoGasto);
+        GuardarGastos();
+
+        Console.WriteLine("\n¡Gasto registrado exitosamente!");
+        Console.WriteLine($"Fecha y hora de registro: {nuevoGasto.FechaHora:dd/MM/yyyy HH:mm}");
+    }
+
+    // 13. RESUMEN DEL DÍA (VENTAS, GASTOS Y RESULTADOS NETOS)
+    static void ResumenDelDia()
+    {
+        DateTime fechaHoy = DateTime.Today;
+
+        // Se agregó la fecha al encabezado de Gastos del Día
+        Console.WriteLine($"\n========= GASTOS DEL DÍA: {fechaHoy:dd/MM/yyyy} =========");
+        
+        double totalGastosDia = 0;
+        int contadorGasto = 1;
+        bool huboGastos = false;
+
+        foreach (var gasto in listaGastos)
+        {
+            if (gasto.FechaHora.Date == fechaHoy)
+            {
+                huboGastos = true;
+                Console.WriteLine($"\n{contadorGasto}.");
+                Console.WriteLine($"Empleado: {gasto.Empleado}");
+                Console.WriteLine($"Monto: S/ {gasto.Monto:0.00}");
+                Console.WriteLine($"Descripción: {gasto.Descripcion}");
+                Console.WriteLine($"Propósito: {gasto.Proposito}");
+                Console.WriteLine($"Fecha: {gasto.FechaHora:dd/MM/yyyy}");
+                Console.WriteLine($"Hora: {gasto.FechaHora:HH:mm}");
+                
+                totalGastosDia += gasto.Monto;
+                contadorGasto++;
+            }
+        }
+
+        if (!huboGastos)
+        {
+            Console.WriteLine("\nNo se registraron gastos el día de hoy.");
+        }
+
+        Console.WriteLine($"\nTOTAL DE GASTOS DEL DÍA: S/ {totalGastosDia:0.00}\n");
+
+
+        // Se agregó la fecha al encabezado de Resumen del Día
+        Console.WriteLine($"========= RESUMEN DEL DÍA: {fechaHoy:dd/MM/yyyy} =========");
+
+        double totalVentasDia = 0;
+        double totalDescuentosDia = 0;
+
+        for (int i = 0; i < totalRegistrosVenta; i++)
+        {
+            if (fechasVenta[i].Date == fechaHoy)
+            {
+                totalVentasDia += subtotalesVenta[i];
+                totalDescuentosDia += descuentosVenta[i];
+            }
+        }
+
+        double ingresosNetos = totalVentasDia - totalDescuentosDia;
+        double resultadoNeto = ingresosNetos - totalGastosDia;
+
+        Console.WriteLine($"Total de ventas: S/ {totalVentasDia:0.00}");
+        Console.WriteLine($"Total de descuentos: S/ {totalDescuentosDia:0.00}");
+        Console.WriteLine($"Ingresos netos: S/ {ingresosNetos:0.00}");
+        Console.WriteLine($"Total de gastos: S/ {totalGastosDia:0.00}");
+        Console.WriteLine($"Resultado neto: S/ {resultadoNeto:0.00}");
+    }
+
+    // GUARDADO Y CARGA DE DATOS
+    static void GuardarProductos()
+    {
+        using (StreamWriter sw = new StreamWriter(archivoProductos, false))
+        {
+            foreach (Producto p in productos)
+            {
+                sw.WriteLine(string.Join("|",
+                    p.Codigo,
+                    p.Nombre.Replace("|", " "),
+                    p.Marca.Replace("|", " "),
+                    p.Precio.ToString(CultureInfo.InvariantCulture),
+                    p.Stock,
+                    p.Categoria.Replace("|", " "),
+                    p.PosicionOriginal));
+            }
+        }
+    }
+
+    static void GuardarVentas()
+    {
+        using (StreamWriter sw = new StreamWriter(archivoVentas, false))
+        {
+            for (int i = 0; i < totalRegistrosVenta; i++)
+            {
+                sw.WriteLine(string.Join("|",
+                    codigosVenta[i],
+                    fechasVenta[i].ToString("O"),
+                    codigosProductoVenta[i],
+                    nombresProductoVenta[i].Replace("|", " "),
+                    cantidadesVenta[i],
+                    subtotalesVenta[i].ToString(CultureInfo.InvariantCulture),
+                    descuentosVenta[i].ToString(CultureInfo.InvariantCulture)));
+            }
+        }
+    }
+
+    static void GuardarHistorialStock()
+    {
+        using (StreamWriter sw = new StreamWriter(archivoStock, false))
+        {
+            foreach (RegistroStock reg in historialStock)
+            {
+                sw.WriteLine(string.Join("|",
+                    reg.FechaHora.ToString("O"),
+                    reg.Codigo,
+                    reg.Nombre.Replace("|", " "),
+                    reg.CantidadIngresada));
+            }
+        }
+    }
+
+    static void GuardarGastos()
+    {
+        using (StreamWriter sw = new StreamWriter(archivoGastos, false))
+        {
+            foreach (Gasto g in listaGastos)
+            {
+                sw.WriteLine(string.Join("|",
+                    g.Empleado.Replace("|", " "),
+                    g.Monto.ToString(CultureInfo.InvariantCulture),
+                    g.Descripcion.Replace("|", " "),
+                    g.Proposito.Replace("|", " "),
+                    g.FechaHora.ToString("O")));
+            }
+        }
+    }
+
+    static void CargarDatosGuardados()
+    {
+        if (File.Exists(archivoProductos))
+        {
+            List<Producto> productosGuardados = new List<Producto>();
+
+            foreach (string linea in File.ReadAllLines(archivoProductos))
+            {
+                string[] datos = linea.Split('|');
+
+                if (datos.Length == 7 &&
+                    double.TryParse(datos[3], NumberStyles.Any, CultureInfo.InvariantCulture, out double precio) &&
+                    int.TryParse(datos[4], out int stock) &&
+                    int.TryParse(datos[6], out int posicion))
+                {
+                    productosGuardados.Add(new Producto(
+                        datos[0], datos[1], datos[2], precio, datos[5], posicion));
+
+                    productosGuardados[productosGuardados.Count - 1].Stock = stock;
+                }
+            }
+
+            if (productosGuardados.Count > 0)
+            {
+                productos = productosGuardados;
+            }
+        }
+
+        if (File.Exists(archivoVentas))
+        {
+            foreach (string linea in File.ReadAllLines(archivoVentas))
+            {
+                string[] datos = linea.Split('|');
+
+                if (datos.Length == 7 &&
+                    DateTime.TryParse(datos[1], null, DateTimeStyles.RoundtripKind, out DateTime fecha) &&
+                    int.TryParse(datos[4], out int cantidad) &&
+                    double.TryParse(datos[5], NumberStyles.Any, CultureInfo.InvariantCulture, out double subtotal) &&
+                    double.TryParse(datos[6], NumberStyles.Any, CultureInfo.InvariantCulture, out double descuento))
+                {
+                    if (totalRegistrosVenta < MAX_REGISTROS_VENTA)
+                    {
+                        codigosVenta[totalRegistrosVenta] = datos[0];
+                        fechasVenta[totalRegistrosVenta] = fecha;
+                        codigosProductoVenta[totalRegistrosVenta] = datos[2];
+                        nombresProductoVenta[totalRegistrosVenta] = datos[3];
+                        cantidadesVenta[totalRegistrosVenta] = cantidad;
+                        subtotalesVenta[totalRegistrosVenta] = subtotal;
+                        descuentosVenta[totalRegistrosVenta] = descuento;
+                        totalRegistrosVenta++;
+                    }
+
+                    if (datos[0].StartsWith("VTA-") &&
+                        int.TryParse(datos[0].Substring(4), out int numero) &&
+                        numero > contadorVentas)
+                    {
+                        contadorVentas = numero;
+                    }
+                }
+            }
+        }
+
+        if (File.Exists(archivoStock))
+        {
+            foreach (string linea in File.ReadAllLines(archivoStock))
+            {
+                string[] datos = linea.Split('|');
+
+                if (datos.Length == 4 &&
+                    DateTime.TryParse(datos[0], null, DateTimeStyles.RoundtripKind, out DateTime fecha) &&
+                    int.TryParse(datos[3], out int cantidad))
+                {
+                    historialStock.Add(new RegistroStock
+                    {
+                        FechaHora = fecha,
+                        Codigo = datos[1],
+                        Nombre = datos[2],
+                        CantidadIngresada = cantidad
+                    });
+                }
+            }
+        }
+        
+        if (File.Exists(archivoGastos))
+        {
+            foreach (string linea in File.ReadAllLines(archivoGastos))
+            {
+                string[] datos = linea.Split('|');
+
+                if (datos.Length == 5 &&
+                    double.TryParse(datos[1], NumberStyles.Any, CultureInfo.InvariantCulture, out double monto) &&
+                    DateTime.TryParse(datos[4], null, DateTimeStyles.RoundtripKind, out DateTime fecha))
+                {
+                    listaGastos.Add(new Gasto
+                    {
+                        Empleado = datos[0],
+                        Monto = monto,
+                        Descripcion = datos[2],
+                        Proposito = datos[3],
+                        FechaHora = fecha
+                    });
+                }
+            }
         }
     }
 
